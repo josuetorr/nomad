@@ -1,0 +1,5 @@
+the index should map from the document url to the terms and term frequencies
+
+index[url] => termfreq[term] => freq
+
+for now, we'll save the index on disk. Maybe later we'll find a way to speed up the process since the index will become huge
