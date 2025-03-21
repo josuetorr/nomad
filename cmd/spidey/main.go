@@ -2,80 +2,15 @@ package main
 
 import (
 	"fmt"
-	"iter"
 	"log"
 	"os"
 	"strings"
-	"unicode"
 
 	"github.com/gocolly/colly"
+	"github.com/josuetorr/nomad/internal/lexer"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
-
-type Token = []rune
-
-type Lexer struct {
-	content []rune
-}
-
-func NewLexer(s string) *Lexer {
-	return &Lexer{content: []rune(s)}
-}
-
-func (l *Lexer) trimLeft() {
-	for len(l.content) > 0 && unicode.IsSpace(l.content[0]) {
-		l.content = l.content[1:]
-	}
-}
-
-func (l *Lexer) chop(n int) Token {
-	token := l.content[0:n]
-	l.content = l.content[n:]
-	return token
-}
-
-func (l *Lexer) chopWhile(p func(rune) bool) Token {
-	n := 0
-	for len(l.content) > n && p(l.content[n]) {
-		n++
-	}
-	return l.chop(n)
-}
-
-func (l *Lexer) nextToken() *Token {
-	l.trimLeft()
-	if len(l.content) == 0 {
-		return nil
-	}
-
-	p := unicode.IsLetter
-	if p(l.content[0]) {
-		token := l.chopWhile(p)
-		return &token
-	}
-
-	p = unicode.IsNumber
-	if p(l.content[0]) {
-		token := l.chopWhile(p)
-		return &token
-	}
-
-	token := l.chop(1)
-	return &token
-}
-
-func (l *Lexer) Tokens() iter.Seq2[int, Token] {
-	return func(yield func(int, Token) bool) {
-		t := l.nextToken()
-		for i := 0; t != nil; i++ {
-			if !yield(i, *t) {
-				return
-			}
-			t = l.nextToken()
-		}
-	}
-}
 
 func createDirIfNotExists(dir string) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -123,7 +58,7 @@ func parseResponse(r *colly.Response) {
 	}
 
 	content := extractDocText(doc)
-	l := NewLexer(content)
+	l := lexer.NewLexer(content)
 
 	for _, t := range l.Tokens() {
 		fmt.Printf("%+v\n", string(t))
