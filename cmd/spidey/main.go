@@ -51,6 +51,8 @@ func extractDocText(root *html.Node) string {
 	return textBuilder.String()
 }
 
+type TermFreq = map[string]int
+
 func parseResponse(r *colly.Response) {
 	doc, err := html.Parse(strings.NewReader(string(r.Body)))
 	if err != nil {
@@ -60,9 +62,17 @@ func parseResponse(r *colly.Response) {
 	content := extractDocText(doc)
 	l := lexer.NewLexer(content)
 
-	for _, t := range l.Tokens() {
-		fmt.Printf("%+v\n", string(t))
+	tf := make(TermFreq)
+	for _, token := range l.Tokens() {
+		t := string(token)
+		if f, ok := tf[t]; !ok {
+			tf[t] = 1
+		} else {
+			tf[t] = f + 1
+		}
 	}
+
+	fmt.Printf("%+v\n", tf)
 }
 
 func main() {
