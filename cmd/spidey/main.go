@@ -58,7 +58,7 @@ type (
 	Indexer = map[string]TermFreq
 )
 
-func parseResponse(index Indexer) func(*colly.Response) {
+func indexDocument(index Indexer) func(*colly.Response) {
 	return func(r *colly.Response) {
 		doc, err := html.Parse(strings.NewReader(string(r.Body)))
 		if err != nil {
@@ -100,7 +100,7 @@ func main() {
 		link := e.Attr("href")
 		e.Request.Visit(link)
 	})
-	c.OnResponse(parseResponse(index))
+	c.OnResponse(indexDocument(index))
 	c.Visit(startingUrl)
 
 	fmt.Printf("%+v\n", index)
