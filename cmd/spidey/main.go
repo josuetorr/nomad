@@ -52,8 +52,10 @@ func extractDocText(root *html.Node) string {
 }
 
 type (
+	// TermFreq is per document
 	TermFreq = map[string]int
-	Indexer  = map[string]TermFreq
+	// Indexer is for a given corpus
+	Indexer = map[string]TermFreq
 )
 
 func parseResponse(index Indexer) func(*colly.Response) {
@@ -63,6 +65,12 @@ func parseResponse(index Indexer) func(*colly.Response) {
 			log.Fatalf("Could not parse document: %s: %s", r.Request.URL.String(), err)
 		}
 
+		url := r.Request.URL.String()
+		if _, exists := index[url]; exists {
+			fmt.Printf("Skipping: %s... already indexed\n", url)
+			return
+		}
+		fmt.Printf("Indexing: %s...\n", url)
 		content := extractDocText(doc)
 		l := lexer.NewLexer(content)
 
@@ -76,7 +84,7 @@ func parseResponse(index Indexer) func(*colly.Response) {
 			}
 		}
 
-		index[r.Request.URL.String()] = tf
+		index[url] = tf
 	}
 }
 
@@ -87,7 +95,7 @@ func main() {
 	startingUrl := "https://wikipedia.org/wiki/meme"
 
 	index := make(Indexer)
-	c := colly.NewCollector(colly.MaxDepth(1), colly.CacheDir(cachedDir))
+	c := colly.NewCollector(colly.MaxDepth(2), colly.CacheDir(cachedDir))
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
 		e.Request.Visit(link)
