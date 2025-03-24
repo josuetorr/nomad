@@ -51,41 +51,49 @@ func extractDocText(root *html.Node) string {
 	return textBuilder.String()
 }
 
-type TermFreq = map[string]int
+type (
+	TermFreq = map[string]int
+	Indexer  = map[string]TermFreq
+)
 
-func parseResponse(r *colly.Response) {
-	doc, err := html.Parse(strings.NewReader(string(r.Body)))
-	if err != nil {
-		log.Fatalf("Could not parse document: %s: %s", r.Request.URL.String(), err)
-	}
-
-	content := extractDocText(doc)
-	l := lexer.NewLexer(content)
-
-	tf := make(TermFreq)
-	for _, token := range l.Tokens() {
-		t := string(token)
-		if f, ok := tf[t]; !ok {
-			tf[t] = 1
-		} else {
-			tf[t] = f + 1
+func parseResponse(index Indexer) func(*colly.Response) {
+	return func(r *colly.Response) {
+		doc, err := html.Parse(strings.NewReader(string(r.Body)))
+		if err != nil {
+			log.Fatalf("Could not parse document: %s: %s", r.Request.URL.String(), err)
 		}
-	}
 
-	fmt.Printf("%+v\n", tf)
+		content := extractDocText(doc)
+		l := lexer.NewLexer(content)
+
+		tf := make(TermFreq)
+		for _, token := range l.Tokens() {
+			t := string(token)
+			if f, ok := tf[t]; !ok {
+				tf[t] = 1
+			} else {
+				tf[t] = f + 1
+			}
+		}
+
+		index[r.Request.URL.String()] = tf
+	}
 }
 
 func main() {
-	cachedDir := "_cached"
+	const cachedDir = "_cached"
 	createDirIfNotExists(cachedDir)
 
 	startingUrl := "https://wikipedia.org/wiki/meme"
 
+	index := make(Indexer)
 	c := colly.NewCollector(colly.MaxDepth(1), colly.CacheDir(cachedDir))
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
 		e.Request.Visit(link)
 	})
-	c.OnResponse(parseResponse)
+	c.OnResponse(parseResponse(index))
 	c.Visit(startingUrl)
+
+	fmt.Printf("%+v\n", index)
 }
