@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/gocolly/colly"
@@ -52,13 +53,11 @@ func extractDocText(root *html.Node) string {
 }
 
 type (
-	// TermFreq is per document
-	TermFreq = map[string]int
-	// Indexer is for a given corpus
-	Indexer = map[string]TermFreq
+	TermFreq = map[string]float32
+	Index    = map[string]TermFreq
 )
 
-func indexDocument(index Indexer) func(*colly.Response) {
+func indexDocument(index Index) func(*colly.Response) {
 	return func(r *colly.Response) {
 		doc, err := html.Parse(strings.NewReader(string(r.Body)))
 		if err != nil {
@@ -70,6 +69,7 @@ func indexDocument(index Indexer) func(*colly.Response) {
 			fmt.Printf("Skipping: %s... already indexed\n", url)
 			return
 		}
+
 		fmt.Printf("Indexing: %s...\n", url)
 		content := extractDocText(doc)
 		l := lexer.NewLexer(content)
@@ -84,6 +84,9 @@ func indexDocument(index Indexer) func(*colly.Response) {
 			}
 		}
 
+		for t, f := range tf {
+			tf[t] = f / float32(len(tf))
+		}
 		index[url] = tf
 	}
 }
@@ -94,7 +97,7 @@ func main() {
 
 	startingUrl := "https://wikipedia.org/wiki/meme"
 
-	index := make(Indexer)
+	index := make(Index)
 	c := colly.NewCollector(colly.MaxDepth(2), colly.CacheDir(cachedDir))
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
@@ -103,5 +106,23 @@ func main() {
 	c.OnResponse(indexDocument(index))
 	c.Visit(startingUrl)
 
-	fmt.Printf("%+v\n", index)
+	for url, tf := range index {
+		const topN = 10
+		fmt.Println("-------------")
+		fmt.Printf("tf-idf for: %s\n", url)
+		fmt.Printf("top %d terms\n", topN)
+
+		keys := make([]string, 0, len(tf))
+		for k := range tf {
+			keys = append(keys, k)
+		}
+
+		sort.Slice(keys, func(i, j int) bool {
+			return tf[keys[i]] > tf[keys[j]]
+		})
+
+		for _, k := range keys[0:topN] {
+			fmt.Printf("term: %s, tf: %f\n", k, tf[k])
+		}
+	}
 }
