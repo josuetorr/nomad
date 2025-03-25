@@ -55,11 +55,11 @@ type (
 	Term  = string
 	DocID = string
 
-	TermCount       = map[Term]int
-	TermCountDocMap = map[DocID]TermCount
+	TermFreq      = map[Term]int
+	TermFreqIndex = map[DocID]TermFreq
 )
 
-func processDoc(docs TermCountDocMap) func(*colly.Response) {
+func indexDoc(tfIndex TermFreqIndex) func(*colly.Response) {
 	return func(r *colly.Response) {
 		doc, err := html.Parse(strings.NewReader(string(r.Body)))
 		if err != nil {
@@ -67,7 +67,7 @@ func processDoc(docs TermCountDocMap) func(*colly.Response) {
 		}
 
 		url := r.Request.URL.String()
-		if _, exists := docs[url]; exists {
+		if _, exists := tfIndex[url]; exists {
 			fmt.Printf("Skipping: %s... already processed\n", url)
 			return
 		}
@@ -79,7 +79,7 @@ func processDoc(docs TermCountDocMap) func(*colly.Response) {
 		}
 		l := lexer.NewLexer(content)
 
-		tc := make(TermCount)
+		tc := make(TermFreq)
 		for _, token := range l.Tokens() {
 			t := string(token)
 			if f, ok := tc[t]; !ok {
@@ -89,7 +89,7 @@ func processDoc(docs TermCountDocMap) func(*colly.Response) {
 			}
 		}
 
-		docs[url] = tc
+		tfIndex[url] = tc
 	}
 }
 
@@ -99,12 +99,12 @@ func main() {
 
 	const startingUrl = "https://wikipedia.org/wiki/meme"
 
-	docs := make(TermCountDocMap)
+	tfIndex := make(TermFreqIndex)
 	c := colly.NewCollector(colly.MaxDepth(2), colly.CacheDir(cachedDir))
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
 		e.Request.Visit(link)
 	})
-	c.OnResponse(processDoc(docs))
+	c.OnResponse(indexDoc(tfIndex))
 	c.Visit(startingUrl)
 }
