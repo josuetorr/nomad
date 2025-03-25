@@ -98,7 +98,7 @@ func main() {
 	const cachedDir = "_cached"
 	createDirIfNotExists(cachedDir)
 
-	startingUrl := "https://wikipedia.org/wiki/meme"
+	const startingUrl = "https://wikipedia.org/wiki/meme"
 
 	index := make(Index)
 	c := colly.NewCollector(colly.MaxDepth(2), colly.CacheDir(cachedDir))
