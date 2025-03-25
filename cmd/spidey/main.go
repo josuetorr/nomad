@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strings"
 
@@ -93,12 +94,48 @@ func indexDoc(tfIndex TermFreqIndex) func(*colly.Response) {
 	}
 }
 
+func tf(t Term, tf TermFreq) float64 {
+	if _, ok := tf[t]; !ok {
+		return 0
+	}
+
+	sum := 0
+	for _, f := range tf {
+		sum += f
+	}
+
+	return float64(tf[t]) / float64(sum)
+}
+
+func idf(term Term, docs TermFreqIndex) float64 {
+	docN := len(docs)
+
+	termInDocCount := 0
+	for _, tf := range docs {
+		_, ok := tf[term]
+		if !ok {
+			continue
+		}
+		termInDocCount += 1
+	}
+
+	return math.Log((float64(docN) + 1) / (float64(termInDocCount) + 1))
+}
+
 func main() {
+	args := os.Args[1:]
+
+	// args parsing
+	if len(args) != 1 {
+		log.Fatal("Invalid args. Must only provide query")
+	}
+
 	const cachedDir = "_cached"
 	createDirIfNotExists(cachedDir)
 
 	const startingUrl = "https://wikipedia.org/wiki/meme"
 
+	// indexing
 	tfIndex := make(TermFreqIndex)
 	c := colly.NewCollector(colly.MaxDepth(2), colly.CacheDir(cachedDir))
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
@@ -107,4 +144,22 @@ func main() {
 	})
 	c.OnResponse(indexDoc(tfIndex))
 	c.Visit(startingUrl)
+
+	// calculating td-idf
+	q := args[0]
+	l := lexer.NewLexer(q)
+	tokens := []string{}
+	for _, t := range l.Tokens() {
+		tokens = append(tokens, string(t))
+	}
+	for docID, termfreq := range tfIndex {
+		fmt.Printf("%s\n", docID)
+		for _, t := range tokens {
+			t := string(t)
+			tf := tf(t, termfreq)
+			idf := idf(t, tfIndex)
+			fmt.Printf("  %s => tf: %f, idf: %f, tfidf: %f\n", t, tf, idf, tf*idf)
+		}
+		println()
+	}
 }
