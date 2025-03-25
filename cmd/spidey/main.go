@@ -53,11 +53,14 @@ func extractDocText(root *html.Node) string {
 }
 
 type (
-	TermFreq = map[string]int
-	Index    = map[string]TermFreq
+	Term  = string
+	DocID = string
+
+	TermCount       = map[Term]int
+	TermCountDocMap = map[DocID]TermCount
 )
 
-func indexDocument(index Index) func(*colly.Response) {
+func processDoc(docs TermCountDocMap) func(*colly.Response) {
 	return func(r *colly.Response) {
 		doc, err := html.Parse(strings.NewReader(string(r.Body)))
 		if err != nil {
@@ -65,29 +68,29 @@ func indexDocument(index Index) func(*colly.Response) {
 		}
 
 		url := r.Request.URL.String()
-		if _, exists := index[url]; exists {
-			fmt.Printf("Skipping: %s... already indexed\n", url)
+		if _, exists := docs[url]; exists {
+			fmt.Printf("Skipping: %s... already processed\n", url)
 			return
 		}
 
-		fmt.Printf("Indexing: %s...\n", url)
+		fmt.Printf("Processing: %s...\n", url)
 		content := extractDocText(doc)
 		if content == "" {
 			return
 		}
 		l := lexer.NewLexer(content)
 
-		tf := make(TermFreq)
+		tc := make(TermCount)
 		for _, token := range l.Tokens() {
 			t := string(token)
-			if f, ok := tf[t]; !ok {
-				tf[t] = 1
+			if f, ok := tc[t]; !ok {
+				tc[t] = 1
 			} else {
-				tf[t] = f + 1
+				tc[t] = f + 1
 			}
 		}
 
-		index[url] = tf
+		docs[url] = tc
 	}
 }
 
@@ -97,32 +100,12 @@ func main() {
 
 	const startingUrl = "https://wikipedia.org/wiki/meme"
 
-	index := make(Index)
+	docs := make(TermCountDocMap)
 	c := colly.NewCollector(colly.MaxDepth(2), colly.CacheDir(cachedDir))
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
 		e.Request.Visit(link)
 	})
-	c.OnResponse(indexDocument(index))
+	c.OnResponse(processDoc(docs))
 	c.Visit(startingUrl)
-
-	for url, tf := range index {
-		const topN = 10
-		fmt.Println("-------------")
-		fmt.Printf("tf-idf for: %s\n", url)
-		fmt.Printf("top %d terms\n", topN)
-
-		keys := make([]string, 0, len(tf))
-		for k := range tf {
-			keys = append(keys, k)
-		}
-
-		sort.Slice(keys, func(i, j int) bool {
-			return tf[keys[i]] > tf[keys[j]]
-		})
-
-		for _, k := range keys[0:topN] {
-			fmt.Printf("term: %s, tf: %f\n", k, tf[k])
-		}
-	}
 }
