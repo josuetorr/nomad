@@ -72,6 +72,9 @@ func indexDocument(index Index) func(*colly.Response) {
 
 		fmt.Printf("Indexing: %s...\n", url)
 		content := extractDocText(doc)
+		if content == "" {
+			return
+		}
 		l := lexer.NewLexer(content)
 
 		tf := make(TermFreq)
