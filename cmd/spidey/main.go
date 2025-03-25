@@ -53,7 +53,7 @@ func extractDocText(root *html.Node) string {
 }
 
 type (
-	TermFreq = map[string]float32
+	TermFreq = map[string]int
 	Index    = map[string]TermFreq
 )
 
@@ -87,9 +87,6 @@ func indexDocument(index Index) func(*colly.Response) {
 			}
 		}
 
-		for t, f := range tf {
-			tf[t] = f / float32(len(tf))
-		}
 		index[url] = tf
 	}
 }
