@@ -4,15 +4,14 @@ import (
 	"log"
 
 	badger "github.com/dgraph-io/badger/v4"
-	"github.com/josuetorr/nomad/internal/common"
 )
 
 type KV struct {
 	db *badger.DB
 }
 
-func NewKV(cfg common.Config) *KV {
-	db, err := badger.Open(badger.DefaultOptions(cfg.BadgerDir))
+func NewKV(path string) *KV {
+	db, err := badger.Open(badger.DefaultOptions(path))
 	if err != nil {
 		log.Fatalf("Failed to open badger: %s", err)
 	}
