@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/gocolly/colly"
@@ -152,14 +153,34 @@ func main() {
 	for _, t := range l.Tokens() {
 		tokens = append(tokens, string(t))
 	}
+	type tdidfTerm struct {
+		term  Term
+		tfidf float64
+	}
+	data := make(map[DocID]tdidfTerm)
 	for docID, termfreq := range tfIndex {
-		fmt.Printf("%s\n", docID)
 		for _, t := range tokens {
 			t := string(t)
 			tf := tf(t, termfreq)
 			idf := idf(t, tfIndex)
-			fmt.Printf("  %s => tf: %f, idf: %f, tfidf: %f\n", t, tf, idf, tf*idf)
+			data[docID] = struct {
+				term  Term
+				tfidf float64
+			}{term: t, tfidf: tf * idf}
 		}
+	}
+	docIDs := make([]DocID, 0, len(data))
+	for k := range data {
+		docIDs = append(docIDs, k)
+	}
+	sort.Slice(docIDs, func(i, j int) bool {
+		return data[docIDs[i]].tfidf < data[docIDs[j]].tfidf
+	})
+
+	for _, docID := range docIDs {
+		x, _ := data[docID]
+		fmt.Printf("%s\n", docID)
+		fmt.Printf("  %s => %f\n", x.term, x.tfidf)
 		println()
 	}
 }
