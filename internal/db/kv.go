@@ -20,15 +20,15 @@ func NewKV(path string) *KV {
 	}
 }
 
-func (kv *KV) Put(key, value []byte) error {
+func (kv *KV) Put(key string, value []byte) error {
 	panic("put not implemented")
 }
 
-func (kv *KV) Get(key []byte) error {
+func (kv *KV) Get(key string) error {
 	panic("get not implemented")
 }
 
-func (kv *KV) Delete(key []byte) error {
+func (kv *KV) Delete(key string) error {
 	panic("delete not implemented")
 }
 
