@@ -24,7 +24,11 @@ func (kv *KV) Put(key string, value []byte) error {
 	panic("put not implemented")
 }
 
-func (kv *KV) Get(key string) error {
+func (kv *KV) Get(key string) ([]byte, error) {
+	panic("get not implemented")
+}
+
+func (kv *KV) Exists(key string) bool {
 	panic("get not implemented")
 }
 
