@@ -1,9 +1,24 @@
 package db
 
-type KV struct{}
+import (
+	"log"
 
-func NewKV() *KV {
-	return &KV{}
+	badger "github.com/dgraph-io/badger/v4"
+	"github.com/josuetorr/nomad/internal/common"
+)
+
+type KV struct {
+	db *badger.DB
+}
+
+func NewKV(cfg common.Config) *KV {
+	db, err := badger.Open(badger.DefaultOptions(cfg.BadgerDir))
+	if err != nil {
+		log.Fatalf("Failed to open badger: %s", err)
+	}
+	return &KV{
+		db: db,
+	}
 }
 
 func (kv *KV) Put(key, value []byte) error {
