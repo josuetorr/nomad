@@ -1,8 +1,6 @@
 package spidey
 
 import (
-	"bytes"
-	"compress/gzip"
 	"fmt"
 	"log"
 	"strings"
@@ -12,18 +10,6 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
-
-// NOTE: might move it somewhere else
-func compress(data []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	w := gzip.NewWriter(&buf)
-	defer w.Close()
-	_, err := w.Write(data)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
 
 // NOTE: might move it somewhere else
 func extractDocText(root *html.Node) string {
@@ -100,7 +86,7 @@ func (s Spidey) onScrapped(r *colly.Response) {
 		return
 	}
 
-	compressed, err := compress([]byte(content))
+	compressed, err := common.Compress([]byte(content))
 	fmt.Printf("Saving %s...\n", url)
 	if err := s.store.Put(k, compressed); err != nil {
 		log.Fatalf("Failed to store doc: %s. Error: %s", url, err)
