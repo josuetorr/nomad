@@ -58,8 +58,7 @@ func extractDocText(root *html.Node) string {
 }
 
 const (
-	cachedDir  = "_cached"
-	pagePrefix = "page:"
+	cachedDir = "_cached"
 )
 
 type Spidey struct {
@@ -84,7 +83,7 @@ func (s Spidey) Crawl(startingUrl string) {
 
 func (s Spidey) onScrapped(r *colly.Response) {
 	url := r.Request.URL.String()
-	k := pagePrefix + url
+	k := common.PageKey + url
 	ok := s.store.Exists(k)
 	if ok {
 		fmt.Printf("Skipping %s... already saved\n", url)
