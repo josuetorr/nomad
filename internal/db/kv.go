@@ -23,10 +23,7 @@ func NewKV(path string) *KV {
 func (kv *KV) Put(key string, value []byte) error {
 	return kv.db.Update(func(txn *badger.Txn) error {
 		e := badger.NewEntry([]byte(key), value)
-		if err := txn.SetEntry(e); err != nil {
-			return err
-		}
-		return nil
+		return txn.SetEntry(e)
 	})
 }
 
