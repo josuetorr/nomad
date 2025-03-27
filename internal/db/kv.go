@@ -20,17 +20,17 @@ func NewKV(path string) *KV {
 	}
 }
 
-func (kv *KV) Put(key string, value []byte) error {
+func (kv *KV) Put(k string, v []byte) error {
 	return kv.db.Update(func(txn *badger.Txn) error {
-		e := badger.NewEntry([]byte(key), value)
+		e := badger.NewEntry([]byte(k), v)
 		return txn.SetEntry(e)
 	})
 }
 
-func (kv *KV) Get(key string) ([]byte, error) {
+func (kv *KV) Get(k string) ([]byte, error) {
 	var val []byte
 	kv.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key))
+		item, err := txn.Get([]byte(k))
 		if err != nil {
 			return err
 		}
@@ -40,8 +40,8 @@ func (kv *KV) Get(key string) ([]byte, error) {
 	return val, nil
 }
 
-func (kv *KV) Exists(key string) bool {
-	val, err := kv.Get(key)
+func (kv *KV) Exists(k string) bool {
+	val, err := kv.Get(k)
 	if err != nil {
 		return false
 	}
@@ -49,7 +49,7 @@ func (kv *KV) Exists(key string) bool {
 	return len(val) > 0
 }
 
-func (kv *KV) Delete(key string) error {
+func (kv *KV) Delete(k string) error {
 	panic("delete not implemented")
 }
 
