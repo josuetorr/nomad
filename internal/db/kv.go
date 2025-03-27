@@ -28,16 +28,21 @@ func (kv *KV) Put(k string, v []byte) error {
 }
 
 func (kv *KV) Get(k string) ([]byte, error) {
-	var val []byte
-	kv.db.View(func(txn *badger.Txn) error {
+	var v []byte
+	if err := kv.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(k))
 		if err != nil {
 			return err
 		}
-		item.ValueCopy(val)
+		v, err = item.ValueCopy(nil)
+		if err != nil {
+			return err
+		}
 		return nil
-	})
-	return val, nil
+	}); err != nil {
+		return nil, err
+	}
+	return v, nil
 }
 
 func (kv *KV) Exists(k string) bool {

@@ -3,6 +3,7 @@ package spidey
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"log"
 	"strings"
 
@@ -86,6 +87,7 @@ func (s Spidey) onScrapped(r *colly.Response) {
 	k := pagePrefix + url
 	ok := s.store.Exists(k)
 	if ok {
+		fmt.Printf("Skipping %s... already saved\n", url)
 		return
 	}
 
@@ -100,6 +102,7 @@ func (s Spidey) onScrapped(r *colly.Response) {
 	}
 
 	compressed, err := compress([]byte(content))
+	fmt.Printf("Saving %s...\n", url)
 	if err := s.store.Put(k, compressed); err != nil {
 		log.Fatalf("Failed to store doc: %s. Error: %s", url, err)
 	}

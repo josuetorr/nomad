@@ -9,7 +9,9 @@ import (
 	"strings"
 
 	"github.com/gocolly/colly"
+	"github.com/josuetorr/nomad/internal/db"
 	"github.com/josuetorr/nomad/internal/lexer"
+	"github.com/josuetorr/nomad/internal/spidey"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -123,7 +125,7 @@ func idf(term Term, docs TermFreqIndex) float64 {
 	return math.Log((float64(docN) + 1) / (float64(termInDocCount) + 1))
 }
 
-func main() {
+func main2() {
 	args := os.Args[1:]
 
 	// args parsing
@@ -183,4 +185,11 @@ func main() {
 		fmt.Printf("  %s => %f\n", x.term, x.tfidf)
 		println()
 	}
+}
+
+func main() {
+	const startingUrl = "https://wikipedia.org/wiki/meme"
+	kv := db.NewKV("/tmp/badger")
+	spider := spidey.NewSpidey(kv)
+	spider.Crawl(startingUrl)
 }
