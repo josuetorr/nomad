@@ -34,13 +34,15 @@ func NewSpidey(store common.Storer, cc chan<- CrawledPage) Spidey {
 
 func (s Spidey) Crawl(entryPoint string) {
 	// NOTE: change depth once crawler / indexer communication has been established
-	c := colly.NewCollector(colly.MaxDepth(1), colly.CacheDir(cachedDir))
+	c := colly.NewCollector(colly.MaxDepth(2), colly.CacheDir(cachedDir))
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
 		e.Request.Visit(link)
 	})
 	c.OnScraped(s.onScrapped)
 	c.Visit(entryPoint)
+	c.Wait()
+	close(s.cc)
 }
 
 func (s Spidey) onScrapped(r *colly.Response) {
