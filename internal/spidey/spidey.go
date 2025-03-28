@@ -36,7 +36,7 @@ func (s Spidey) Crawl(startingUrl string) {
 
 func (s Spidey) onScrapped(r *colly.Response) {
 	url := r.Request.URL.String()
-	k := common.PageKey + url
+	k := common.DocKey(url)
 	ok := s.store.Exists(k)
 	if ok {
 		fmt.Printf("Skipping %s... already saved\n", url)
