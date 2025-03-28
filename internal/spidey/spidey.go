@@ -3,59 +3,70 @@ package spidey
 import (
 	"fmt"
 	"log"
-	"strings"
+	"os"
 
 	"github.com/gocolly/colly"
 	"github.com/josuetorr/nomad/internal/common"
-	"golang.org/x/net/html"
 )
 
 const (
 	cachedDir = "_cached"
 )
 
+type CrawledPage struct {
+	Url     string
+	Content string
+}
+
 type Spidey struct {
 	store common.Storer
 }
 
 func NewSpidey(store common.Storer) Spidey {
+	createDirIfNotExists(cachedDir)
 	return Spidey{
 		store: store,
 	}
 }
 
-func (s Spidey) Crawl(startingUrl string) {
-	c := colly.NewCollector(colly.MaxDepth(2), colly.CacheDir(cachedDir))
+func (s Spidey) Crawl(entryPoint string, cc chan<- CrawledPage) {
+	// NOTE: change depth once crawler / indexer communication has been established
+	c := colly.NewCollector(colly.MaxDepth(1), colly.CacheDir(cachedDir))
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
 		e.Request.Visit(link)
 	})
-	c.OnScraped(s.onScrapped)
-	c.Visit(startingUrl)
+	c.OnScraped(s.onScrapped(cc))
+	c.Visit(entryPoint)
 }
 
-func (s Spidey) onScrapped(r *colly.Response) {
-	url := r.Request.URL.String()
-	k := common.DocKey(url)
-	ok := s.store.Exists(k)
-	if ok {
-		fmt.Printf("Skipping %s... already saved\n", url)
-		return
-	}
+func (s Spidey) onScrapped(cc chan<- CrawledPage) func(r *colly.Response) {
+	return func(r *colly.Response) {
+		url := r.Request.URL.String()
+		k := common.DocKey(url)
+		ok := s.store.Exists(k)
+		if ok {
+			fmt.Printf("Skipping %s... already saved\n", url)
+			return
+		}
 
-	doc, err := html.Parse(strings.NewReader(string(r.Body)))
-	if err != nil {
-		log.Fatalf("Could not parse document: %s. Error: %s", r.Request.URL.String(), err)
-	}
+		cc <- CrawledPage{Url: url, Content: string(r.Body)}
 
-	content := common.ExtractDocText(doc)
-	if content == "" {
-		return
+		compressed, err := common.Compress(r.Body)
+		if err != nil {
+			log.Fatalf("Failed to compress: %s. Error :%s", url, err)
+		}
+		fmt.Printf("Saving %s...\n", url)
+		if err := s.store.Put(k, compressed); err != nil {
+			log.Fatalf("Failed to store doc: %s. Error: %s", url, err)
+		}
 	}
+}
 
-	compressed, err := common.Compress([]byte(content))
-	fmt.Printf("Saving %s...\n", url)
-	if err := s.store.Put(k, compressed); err != nil {
-		log.Fatalf("Failed to store doc: %s. Error: %s", url, err)
+func createDirIfNotExists(dir string) {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.Mkdir(dir, os.ModePerm); err != nil {
+			log.Fatalf("Failed to create dir: %s. Error: %s", cachedDir, err)
+		}
 	}
 }
