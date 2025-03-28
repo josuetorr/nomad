@@ -2,11 +2,14 @@
 A decentralizied search engine
 
 # Brainstorm
-the index should map from the document url to the terms and term frequencies
+Each node will be in charge of 3 tasks: 
+* crawling
+* indexing
+* searching
 
-index[url] => termfreq[term] => freq
+crawling and indexing will be performed concurrently using goroutines and channels. When a page has been crawled, we will index said page. We will store
+the page itself and it's index values
 
-for now, we'll save the index on disk. Maybe later we'll find a way to speed up the process since the index will become huge
 
 # TechStack
 A brief overview of nomad's techstack
