@@ -10,10 +10,10 @@ import (
 func main() {
 	const entryPoint = "https://wikipedia.org/wiki/meme"
 	kv := db.NewKV("/tmp/badger")
-	crawleCh := make(chan spidey.CrawledPage, 100)
-	spider := spidey.NewSpidey(kv)
-	spider.Crawl(entryPoint, crawleCh)
+	crawlCh := make(chan spidey.CrawledPage, 100)
+	spider := spidey.NewSpidey(kv, crawlCh)
+	go spider.Crawl(entryPoint)
 
-	data := <-crawleCh
-	fmt.Printf("crawled data: %+v\n", data)
+	data := <-crawlCh
+	fmt.Printf("crawled data: %+v\n", data.Indexable)
 }
