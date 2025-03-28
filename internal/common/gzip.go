@@ -18,6 +18,7 @@ func Compress(data []byte) ([]byte, error) {
 
 func Decompress(data []byte) ([]byte, error) {
 	r, err := gzip.NewReader(bytes.NewReader(data))
+	defer r.Close()
 	if err != nil {
 		return nil, err
 	}
