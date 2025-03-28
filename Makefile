@@ -1,7 +1,8 @@
 .PHONY:
-run-spidey:
-	go run ./cmd/spidey/main.go $(args)
+build:
+	go build -o nomad ./cmd/nomad/main.go 
 
 .PHONY:
-build-spidey:
-	go build -o spidey ./cmd/spidey/main.go 
+run:
+	go run ./cmd/nomad/main.go $(args)
+
