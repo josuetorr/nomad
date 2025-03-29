@@ -33,6 +33,11 @@ func DocKey(parts ...string) string {
 	return createkey(parts)
 }
 
+func DFKey(parts ...string) string {
+	parts = slices.Insert(parts, 0, "df")
+	return createkey(parts)
+}
+
 func KeyParts(k string) []string {
 	return strings.Split(k, keySep)
 }
