@@ -12,7 +12,9 @@ type Lexer struct {
 }
 
 func NewLexer(s string) *Lexer {
-	return &Lexer{content: []rune(s)}
+	return &Lexer{
+		content: []rune(s),
+	}
 }
 
 func (l *Lexer) trimLeft() {
