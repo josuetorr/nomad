@@ -38,6 +38,10 @@ func DFKey(parts ...string) string {
 	return createkey(parts)
 }
 
+func DocCountKey() string {
+	return createkey([]string{"doc_count"})
+}
+
 func KeyParts(k string) []string {
 	return strings.Split(k, keySep)
 }

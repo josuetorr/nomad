@@ -45,6 +45,19 @@ func (kv *KV) Get(k string) ([]byte, error) {
 	return v, nil
 }
 
+func (kv *KV) IteratePrefix(prefix string, fn func(val []byte) error) error {
+	return kv.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+		p := []byte(prefix)
+		for it.Seek(p); it.ValidForPrefix(p); it.Next() {
+			item := it.Item()
+			return item.Value(fn)
+		}
+		return nil
+	})
+}
+
 func (kv *KV) Exists(k string) bool {
 	val, err := kv.Get(k)
 	if err != nil {
