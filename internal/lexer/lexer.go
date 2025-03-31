@@ -13,7 +13,7 @@ type Lexer struct {
 
 func NewLexer(s string) *Lexer {
 	return &Lexer{
-		content: []rune(s),
+		content: Token(s),
 	}
 }
 
