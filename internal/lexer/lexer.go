@@ -8,7 +8,7 @@ import (
 type Token = []rune
 
 type Lexer struct {
-	content []rune
+	content Token
 }
 
 func NewLexer(s string) *Lexer {
