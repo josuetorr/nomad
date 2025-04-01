@@ -68,18 +68,18 @@ func (z *Zeno) IndexTF(pc <-chan spidey.DocData) {
 		fmt.Printf("Indexing %s...\n", doc.Url)
 		err = z.kv.BatchWrite(func(w db.KVWriter) {
 			for term, docF := range z.tft {
-				i := 0
 				key := []byte(common.TermKey(term))
+				var val []byte
+				i := 0
 				for docID, f := range docF {
-					var val []byte
 					if i == (len(docF) - 1) {
-						val = fmt.Appendf(nil, "%s:%d", docID, f)
+						val = fmt.Appendf(val, "%s:%d", docID, f)
 					} else {
-						val = fmt.Appendf(nil, "%s:%d,", docID, f)
+						val = fmt.Appendf(val, "%s:%d,", docID, f)
 					}
-					w.Set(key, val)
 					i++
 				}
+				w.Set(key, val)
 			}
 		})
 		if err != nil {
