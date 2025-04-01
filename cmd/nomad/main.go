@@ -14,7 +14,7 @@ const startURL = "https://wikipedia.org/wiki/meme"
 
 func main() {
 	kv := db.NewKV("/tmp/badger/nomad")
-	pc := make(chan spidey.DocData, 100)
+	pc := make(chan spidey.DocData, 5000)
 	spidey := spidey.NewSpidey(kv)
 	zeno := zeno.NewZeno(kv)
 	wg := &sync.WaitGroup{}
@@ -41,5 +41,5 @@ func main() {
 		fmt.Printf("Failed to get doc_count. err: %s\n", err)
 	}
 	docN, _ := common.BytesToUint64(bytes)
-	println(docN)
+	fmt.Printf("doc count %d\n", docN)
 }

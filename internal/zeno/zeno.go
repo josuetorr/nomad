@@ -27,12 +27,14 @@ type Zeno struct {
 	docN uint64
 }
 
+const mapSize = 500
+
 func NewZeno(kv db.KVStorer) Zeno {
 	return Zeno{
 		kv: kv,
 
 		mu:   &sync.Mutex{},
-		tft:  make(termFreq, 100),
+		tft:  make(termFreq, mapSize),
 		docN: 0,
 	}
 }
@@ -41,7 +43,6 @@ func NewZeno(kv db.KVStorer) Zeno {
 // The calculation for tf-idf is calculate when a search query is received
 func (z *Zeno) IndexTF(pc <-chan spidey.DocData) {
 	for doc := range pc {
-		z.docN++
 		if !doc.Indexable {
 			fmt.Printf("Skipping %s...\n", doc.Url)
 			continue
@@ -56,16 +57,19 @@ func (z *Zeno) IndexTF(pc <-chan spidey.DocData) {
 		l := lexer.NewLexer(text)
 
 		z.mu.Lock()
+		z.docN++
 		for _, t := range l.Tokens() {
 			t := string(t)
 			if _, ok := z.tft[t]; !ok {
-				z.tft[t] = make(docFreq, 100)
+				z.tft[t] = make(docFreq, mapSize)
 			} else {
 				z.tft[t][doc.Url]++
 			}
 		}
+		z.mu.Unlock()
 
 		fmt.Printf("Indexing %s...\n", doc.Url)
+		z.mu.Lock()
 		err = z.kv.BatchWrite(func(w db.KVWriter) {
 			for term, docF := range z.tft {
 				key := []byte(common.TermKey(term))
