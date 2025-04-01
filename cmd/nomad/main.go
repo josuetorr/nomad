@@ -40,6 +40,6 @@ func main() {
 	if err != nil {
 		fmt.Printf("Failed to get doc_count. err: %s\n", err)
 	}
-	docN := common.BytesToUint64(bytes)
+	docN, _ := common.BytesToUint64(bytes)
 	println(docN)
 }

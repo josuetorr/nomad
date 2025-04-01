@@ -11,9 +11,12 @@ func Uint64ToBytes(val uint64) []byte {
 	return b
 }
 
-func BytesToUint64(b []byte) uint64 {
+func BytesToUint64(b []byte) (uint64, error) {
 	var num uint64
 	buf := bytes.NewReader(b)
-	_ = binary.Read(buf, binary.LittleEndian, &num)
-	return num
+	err := binary.Read(buf, binary.LittleEndian, &num)
+	if err != nil {
+		return 0, err
+	}
+	return num, nil
 }
