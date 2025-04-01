@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 
+	"github.com/josuetorr/nomad/internal/common"
 	"github.com/josuetorr/nomad/internal/db"
 	"github.com/josuetorr/nomad/internal/spidey"
 	"github.com/josuetorr/nomad/internal/zeno"
@@ -32,4 +34,12 @@ func main() {
 	}
 	wg.Wait()
 	zeno.IndexDF()
+
+	// testing stored data
+	bytes, err := kv.Get(common.DocCountKey())
+	if err != nil {
+		fmt.Printf("Failed to get doc_count. err: %s\n", err)
+	}
+	docN := common.BytesToUint64(bytes)
+	println(docN)
 }

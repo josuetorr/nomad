@@ -92,7 +92,7 @@ func (z *Zeno) IndexTF(pc <-chan spidey.DocData) {
 // IndexDF indexes documents by DocumentFrequency. This func should be called once IndexTF is done doing its job
 // since it expects o.tf to not change
 func (z *Zeno) IndexDF() {
-	z.kv.Put(common.DocCountKey(), fmt.Appendf(nil, "%d", z.docN))
+	z.kv.Put(common.DocCountKey(), common.Uint64ToBytes(z.docN))
 	z.kv.BatchWrite(func(w db.KVWriter) {
 		for t, docF := range z.tft {
 			k := common.DFKey(t)
