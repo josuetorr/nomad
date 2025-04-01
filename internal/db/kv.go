@@ -45,6 +45,9 @@ func (kv *KV) Get(k string) ([]byte, error) {
 	return v, nil
 }
 
+func (kv *KV) BatchWrite() {
+}
+
 func (kv *KV) IteratePrefix(prefix string, fn func(val []byte) error) error {
 	return kv.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)

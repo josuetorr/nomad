@@ -4,5 +4,5 @@ build:
 
 .PHONY:
 run:
-	go run ./cmd/nomad/main.go $(args)
+	go run ./cmd/nomad/main.go
 

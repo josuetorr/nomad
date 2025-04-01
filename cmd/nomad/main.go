@@ -1,19 +1,35 @@
 package main
 
 import (
-	"fmt"
+	"sync"
 
 	"github.com/josuetorr/nomad/internal/db"
 	"github.com/josuetorr/nomad/internal/spidey"
+	"github.com/josuetorr/nomad/internal/zeno"
 )
 
-func main() {
-	const entryPoint = "https://wikipedia.org/wiki/meme"
-	kv := db.NewKV("/tmp/badger")
-	crawlCh := make(chan spidey.CrawledPage, 100)
-	spider := spidey.NewSpidey(kv, crawlCh)
-	go spider.Crawl(entryPoint)
+const startURL = "https://wikipedia.org/wiki/meme"
 
-	data := <-crawlCh
-	fmt.Printf("crawled data: %+v\n", data.Indexable)
+func main() {
+	kv := db.NewKV("/tmp/badger/nomad")
+	pc := make(chan spidey.DocData, 100)
+	spidey := spidey.NewSpidey(kv)
+	zeno := zeno.NewZeno(kv)
+	wg := &sync.WaitGroup{}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		spidey.Crawl(startURL, pc)
+	}()
+
+	for range 5 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			zeno.IndexTF(pc)
+		}()
+	}
+	wg.Wait()
+	zeno.IndexDF()
 }

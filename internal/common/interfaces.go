@@ -1,6 +1,6 @@
 package common
 
-type Storer interface {
+type KVStorer interface {
 	Put(key string, value []byte) error
 	Get(key string) ([]byte, error)
 	IteratePrefix(key string, fn func(val []byte) error) error

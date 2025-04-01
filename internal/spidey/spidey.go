@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/v2"
 	"github.com/josuetorr/nomad/internal/common"
 )
 
@@ -13,63 +13,68 @@ const (
 	cachedDir = "_cached"
 )
 
-type CrawledPage struct {
+type DocData struct {
 	Url       string
 	Content   string
 	Indexable bool
 }
 
 type Spidey struct {
-	store common.Storer
-	cc    chan<- CrawledPage
+	kv common.KVStorer
 }
 
-func NewSpidey(store common.Storer, cc chan<- CrawledPage) Spidey {
+func NewSpidey(kv common.KVStorer) Spidey {
 	createDirIfNotExists(cachedDir)
 	return Spidey{
-		store: store,
-		cc:    cc,
+		kv: kv,
 	}
 }
 
-func (s Spidey) Crawl(entryPoint string) {
-	// NOTE: change depth once crawler / indexer communication has been established
-	c := colly.NewCollector(colly.MaxDepth(2), colly.CacheDir(cachedDir))
-	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		link := e.Attr("href")
-		e.Request.Visit(link)
-	})
-	c.OnScraped(s.onScrapped)
-	c.Visit(entryPoint)
+func (s Spidey) Crawl(startURL string, pc chan<- DocData) {
+	c := colly.NewCollector(
+		colly.Async(),
+		colly.MaxDepth(2),
+		colly.CacheDir(cachedDir),
+	)
+	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5})
+	c.OnHTML("a[href]", s.onHTML)
+	c.OnResponse(s.onResponse(pc))
+	c.Visit(startURL)
 	c.Wait()
-	close(s.cc)
+	close(pc)
 }
 
-func (s Spidey) onScrapped(r *colly.Response) {
-	url := r.Request.URL.String()
-	k := common.DocKey(url)
-	ok := s.store.Exists(k)
-	if ok {
-		fmt.Printf("Skipping %s... already saved\n", url)
-		s.cc <- CrawledPage{Indexable: false}
-		return
-	}
+func (s Spidey) onHTML(e *colly.HTMLElement) {
+	link := e.Attr("href")
+	e.Request.Visit(link)
+}
 
-	compressed, err := common.Compress(r.Body)
-	if err != nil {
-		log.Fatalf("Failed to compress: %s. Error :%s", url, err)
+func (s Spidey) onResponse(pc chan<- DocData) func(r *colly.Response) {
+	return func(r *colly.Response) {
+		url := r.Request.URL.String()
+		k := common.DocKey(url)
+		if s.kv.Exists(k) {
+			pc <- DocData{Url: url, Indexable: false}
+			return
+		}
+
+		compressed, err := common.Compress(r.Body)
+		if err != nil {
+			fmt.Printf("Failed to compress: %s. Error: %s\n", url, err)
+			return
+		}
+
+		if err := s.kv.Put(k, compressed); err != nil {
+			fmt.Printf("Failed to save: %s. Error: %s\n", url, err)
+		}
+		pc <- DocData{Url: url, Content: string(r.Body), Indexable: true}
 	}
-	fmt.Printf("Saving %s...\n", url)
-	if err := s.store.Put(k, compressed); err != nil {
-		log.Fatalf("Failed to store doc: %s. Error: %s", url, err)
-	}
-	s.cc <- CrawledPage{Url: url, Content: string(r.Body), Indexable: true}
 }
 
 func createDirIfNotExists(dir string) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		if err := os.Mkdir(dir, os.ModePerm); err != nil {
-			log.Fatalf("Failed to create dir: %s. Error: %s", cachedDir, err)
+			log.Fatalf("Failed to create dir: %s. Error: %s\n", cachedDir, err)
 		}
 	}
 }
