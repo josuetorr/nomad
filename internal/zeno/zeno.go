@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/josuetorr/nomad/internal/common"
+	"github.com/josuetorr/nomad/internal/db"
 	"github.com/josuetorr/nomad/internal/lexer"
 	"github.com/josuetorr/nomad/internal/spidey"
 	"golang.org/x/net/html"
@@ -19,14 +20,14 @@ type (
 )
 
 type Zeno struct {
-	kv common.KVStorer
+	kv db.KVStorer
 
 	mu   *sync.Mutex
 	tft  termFreq
 	docN uint64
 }
 
-func NewZeno(kv common.KVStorer) Zeno {
+func NewZeno(kv db.KVStorer) Zeno {
 	return Zeno{
 		kv: kv,
 
@@ -65,17 +66,24 @@ func (z *Zeno) IndexTF(pc <-chan spidey.DocData) {
 		}
 
 		fmt.Printf("Indexing %s...\n", doc.Url)
-		// TODO: use batching to write these entries
-		for term, docF := range z.tft {
-			i := 0
-			for docID, f := range docF {
-				if i == (len(docF) - 1) {
-					z.kv.Put(common.TermKey(term), fmt.Appendf(nil, "%s:%d", docID, f))
-				} else {
-					z.kv.Put(common.TermKey(term), fmt.Appendf(nil, "%s:%d,", docID, f))
+		err = z.kv.BatchWrite(func(w db.KVWriter) {
+			for term, docF := range z.tft {
+				i := 0
+				key := []byte(common.TermKey(term))
+				for docID, f := range docF {
+					var val []byte
+					if i == (len(docF) - 1) {
+						val = fmt.Appendf(nil, "%s:%d", docID, f)
+					} else {
+						val = fmt.Appendf(nil, "%s:%d,", docID, f)
+					}
+					w.Set(key, val)
+					i++
 				}
-				i++
 			}
+		})
+		if err != nil {
+			fmt.Printf("Failed to batch write: %s. Error: %s", doc.Url, err)
 		}
 		z.mu.Unlock()
 	}
@@ -85,8 +93,10 @@ func (z *Zeno) IndexTF(pc <-chan spidey.DocData) {
 // since it expects o.tf to not change
 func (z *Zeno) IndexDF() {
 	z.kv.Put(common.DocCountKey(), fmt.Appendf(nil, "%d", z.docN))
-	for t, docF := range z.tft {
-		k := common.DFKey(t)
-		z.kv.Put(k, fmt.Appendf(nil, "%d", len(docF)))
-	}
+	z.kv.BatchWrite(func(w db.KVWriter) {
+		for t, docF := range z.tft {
+			k := common.DFKey(t)
+			w.Set([]byte(k), fmt.Appendf(nil, "%d", len(docF)))
+		}
+	})
 }

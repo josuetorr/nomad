@@ -45,7 +45,11 @@ func (kv *KV) Get(k string) ([]byte, error) {
 	return v, nil
 }
 
-func (kv *KV) BatchWrite() {
+func (kv *KV) BatchWrite(fn func(w KVWriter)) error {
+	wb := kv.db.NewWriteBatch()
+	defer wb.Cancel()
+	fn(wb)
+	return wb.Flush()
 }
 
 func (kv *KV) IteratePrefix(prefix string, fn func(val []byte) error) error {

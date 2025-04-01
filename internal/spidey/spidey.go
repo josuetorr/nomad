@@ -7,6 +7,7 @@ import (
 
 	"github.com/gocolly/colly/v2"
 	"github.com/josuetorr/nomad/internal/common"
+	"github.com/josuetorr/nomad/internal/db"
 )
 
 const (
@@ -20,10 +21,10 @@ type DocData struct {
 }
 
 type Spidey struct {
-	kv common.KVStorer
+	kv db.KVStorer
 }
 
-func NewSpidey(kv common.KVStorer) Spidey {
+func NewSpidey(kv db.KVStorer) Spidey {
 	createDirIfNotExists(cachedDir)
 	return Spidey{
 		kv: kv,
