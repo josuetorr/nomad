@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"log"
+	"time"
 
 	badger "github.com/dgraph-io/badger/v4"
 )
@@ -10,6 +11,8 @@ import (
 type KV struct {
 	db *badger.DB
 }
+
+type MergeFunc = badger.MergeFunc
 
 func NewKV(path string) *KV {
 	db, err := badger.Open(badger.DefaultOptions(path))
@@ -51,6 +54,16 @@ func (kv *KV) BatchWrite(fn func(w KVWriter)) error {
 	defer wb.Cancel()
 	fn(wb)
 	return wb.Flush()
+}
+
+func (kv *KV) Merge(key []byte, op MergeFunc, dur time.Duration, vals ...[]byte) ([]byte, error) {
+	mo := kv.db.GetMergeOperator(key, op, dur)
+	defer mo.Stop()
+	for _, v := range vals {
+		mo.Add(v)
+	}
+
+	return mo.Get()
 }
 
 func (kv *KV) IteratePrefix(prefix string, fn func(key []byte, val []byte) error) error {
