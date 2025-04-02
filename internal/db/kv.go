@@ -52,14 +52,17 @@ func (kv *KV) BatchWrite(fn func(w KVWriter)) error {
 	return wb.Flush()
 }
 
-func (kv *KV) IteratePrefix(prefix string, fn func(val []byte) error) error {
+func (kv *KV) IteratePrefix(prefix string, fn func(key []byte, val []byte) error) error {
 	return kv.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
 		p := []byte(prefix)
 		for it.Seek(p); it.ValidForPrefix(p); it.Next() {
 			item := it.Item()
-			return item.Value(fn)
+			key := item.Key()
+			return item.Value(func(val []byte) error {
+				return fn(key, val)
+			})
 		}
 		return nil
 	})
