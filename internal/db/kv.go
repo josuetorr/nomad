@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"log"
 
 	badger "github.com/dgraph-io/badger/v4"
@@ -60,9 +61,12 @@ func (kv *KV) IteratePrefix(prefix string, fn func(key []byte, val []byte) error
 		for it.Seek(p); it.ValidForPrefix(p); it.Next() {
 			item := it.Item()
 			key := item.Key()
-			return item.Value(func(val []byte) error {
+			err := item.Value(func(val []byte) error {
 				return fn(key, val)
 			})
+			if err != nil {
+				fmt.Printf("Failed to get value for: %s. err: %s\n", string(key), err)
+			}
 		}
 		return nil
 	})
