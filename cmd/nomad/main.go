@@ -1,30 +1,32 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 
-	"github.com/josuetorr/nomad/internal/pipeline"
+	"github.com/josuetorr/nomad/internal/db"
+	"github.com/josuetorr/nomad/internal/node"
 )
 
 const startURL = "https://wikipedia.org/wiki/meme"
 
 func main() {
-	pl := pipeline.Init()
+	kv := db.NewKV("/tmp/badger/nomad")
+	n := node.Init(kv)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		pl.Crawl(startURL)
+		n.Crawl(startURL)
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for dj := range pl.DocJobs {
-			for _, d := range dj {
-				fmt.Printf("%s\n", d.Url)
-			}
-		}
+		n.SaveDocs()
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		n.TokenizeDocs()
 	}()
 	wg.Wait()
 	println("done")
