@@ -1,7 +1,7 @@
 package main
 
 import (
-	"sync"
+	"fmt"
 
 	"github.com/josuetorr/nomad/internal/db"
 	"github.com/josuetorr/nomad/internal/node"
@@ -10,24 +10,22 @@ import (
 const startURL = "https://wikipedia.org/wiki/meme"
 
 func main() {
-	kv := db.NewKV("/tmp/badger/nomad")
-	n := node.Init(kv)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		n.Crawl(startURL)
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		n.SaveDocs()
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		n.TokenizeDocs()
-	}()
-	wg.Wait()
-	println("done")
+	kv := db.NewKV("/tmp/badger/nodmad")
+	n := node.NewNode(kv)
+	docStage := n.Crawl(startURL)
+	tokenizeStage := n.TokenizeDocs(docStage)
+	done := n.IndexDF(tokenizeStage)
+	// NOTE: for now we will omit saving docs. No need for prototyping. Docs are cached
+	// TODO: index tf
+	// TODO: index df
+
+	<-done
+
+	for docID, doc := range n.DfTable {
+		fmt.Printf("doc ID: %s\n", docID)
+		for t, tc := range doc {
+			fmt.Printf("  term: %s, count: %d\n", t, tc)
+		}
+		println()
+	}
 }

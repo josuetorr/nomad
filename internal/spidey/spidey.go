@@ -1,13 +1,12 @@
 package spidey
 
 import (
-	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/gocolly/colly/v2"
-	"github.com/josuetorr/nomad/internal/common"
-	"github.com/josuetorr/nomad/internal/db"
+	"github.com/josuetorr/nomad/internal/pipeline"
 )
 
 const (
@@ -15,60 +14,53 @@ const (
 )
 
 type DocData struct {
-	Url       string
-	Content   string
-	Indexable bool
+	Url     string
+	Content string
 }
 
-type Spidey struct {
-	kv db.KVStorer
-}
+type Spidey struct{}
 
-func NewSpidey(kv db.KVStorer) Spidey {
+func NewSpidey() Spidey {
 	createDirIfNotExists(cachedDir)
-	return Spidey{
-		kv: kv,
+	return Spidey{}
+}
+
+func (s Spidey) Crawl(startURL string) pipeline.Stage[DocData] {
+	return func() chan DocData {
+		out := make(chan DocData, 1000)
+		go func() {
+			defer close(out)
+			c := colly.NewCollector(
+				colly.Async(),
+				colly.MaxDepth(3),
+				colly.CacheDir(cachedDir),
+			)
+			c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5})
+			c.OnHTML("a[href]", s.onHTML)
+			c.OnResponse(s.onResponse(out))
+			c.Visit(startURL)
+			c.Wait()
+		}()
+		return out
 	}
 }
 
-func (s Spidey) Crawl(startURL string, pc chan<- DocData) {
-	c := colly.NewCollector(
-		colly.Async(),
-		colly.MaxDepth(2),
-		colly.CacheDir(cachedDir),
-	)
-	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5})
-	c.OnHTML("a[href]", s.onHTML)
-	c.OnResponse(s.onResponse(pc))
-	c.Visit(startURL)
-	c.Wait()
-	close(pc)
-}
-
 func (s Spidey) onHTML(e *colly.HTMLElement) {
-	link := e.Attr("href")
-	e.Request.Visit(link)
 }
 
-func (s Spidey) onResponse(pc chan<- DocData) func(r *colly.Response) {
+func (s Spidey) onResponse(c chan DocData) func(r *colly.Response) {
 	return func(r *colly.Response) {
+		// TODO: handle other types of documents
+		if !strings.Contains(r.Headers.Get("Content-Type"), "text/html") {
+			return
+		}
 		url := r.Request.URL.String()
-		k := common.DocKey(url)
-		if s.kv.Exists(k) {
-			pc <- DocData{Url: url, Indexable: false}
-			return
+		content := string(r.Body)
+		doc := DocData{
+			Url:     url,
+			Content: content,
 		}
-
-		compressed, err := common.Compress(r.Body)
-		if err != nil {
-			fmt.Printf("Failed to compress: %s. Error: %s\n", url, err)
-			return
-		}
-
-		if err := s.kv.Put(k, compressed); err != nil {
-			fmt.Printf("Failed to save: %s. Error: %s\n", url, err)
-		}
-		pc <- DocData{Url: url, Content: string(r.Body), Indexable: true}
+		c <- doc
 	}
 }
 
