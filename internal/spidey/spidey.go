@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/gocolly/colly/v2"
-	"github.com/josuetorr/nomad/internal/pipeline"
+	"github.com/josuetorr/nomad/pkg/pipeline"
 )
 
 const (
