@@ -1,6 +1,7 @@
 package common_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/josuetorr/nomad/internal/common"
@@ -8,14 +9,14 @@ import (
 )
 
 func TestTermKey_Successful(t *testing.T) {
-	expected := "term:test"
+	expected := fmt.Sprintf("term%stest", common.KeySep)
 	result := common.TermKey("test")
 
 	assert.Equal(t, expected, result)
 }
 
 func TestDocKey_Successful(t *testing.T) {
-	expected := "doc:wikipedia.com"
+	expected := fmt.Sprintf("doc%swikipedia.com", common.KeySep)
 	result := common.DocKey("wikipedia.com")
 
 	assert.Equal(t, expected, result)
