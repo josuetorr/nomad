@@ -49,10 +49,12 @@ func (kv *KV) Get(k string) ([]byte, error) {
 	return v, nil
 }
 
-func (kv *KV) BatchWrite(fn func(w KVWriter)) error {
+func (kv *KV) BatchWrite(fn func(w KVWriter) error) error {
 	wb := kv.db.NewWriteBatch()
 	defer wb.Cancel()
-	fn(wb)
+	if err := fn(wb); err != nil {
+		return err
+	}
 	return wb.Flush()
 }
 
