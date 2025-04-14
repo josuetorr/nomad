@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/josuetorr/nomad/internal/common"
 	"github.com/josuetorr/nomad/internal/db"
 	"github.com/josuetorr/nomad/internal/node"
 )
@@ -10,22 +11,23 @@ import (
 const startURL = "https://wikipedia.org/wiki/meme"
 
 func main() {
-	kv := db.NewKV("/tmp/badger/nodmad")
+	kv := db.NewKV("/tmp/badger/nomad")
 	n := node.NewNode(kv)
-	docStage := n.Crawl(startURL)
-	tokenizeStage := n.TokenizeDocs(docStage)
-	done := n.IndexDF(tokenizeStage)
-	// NOTE: for now we will omit saving docs. No need for prototyping. Docs are cached
-	// TODO: index tf
-	// TODO: index df
+	docs := n.Crawl(startURL)
+	tokens := n.TokenizeDocs(docs)
+	doctfs := n.DFIndex(tokens)
+	done := n.WriteIndexDF(doctfs)
 
-	<-done
-
-	for docID, doc := range n.DfTable {
-		fmt.Printf("doc ID: %s\n", docID)
-		for t, tc := range doc {
-			fmt.Printf("  term: %s, count: %d\n", t, tc)
-		}
-		println()
+	err := <-done
+	if err != nil {
+		fmt.Printf("Err: %s\n", err)
+	} else {
+		n.WriteIndexTF()
 	}
+}
+
+func main2() {
+	kv := db.NewKV("/tmp/badger/nomad")
+	bytes, _ := kv.Get(common.DocKey(startURL))
+	fmt.Printf("%s\n", string(bytes))
 }

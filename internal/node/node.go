@@ -2,12 +2,11 @@ package node
 
 import (
 	"fmt"
-	"log"
-	"os"
+	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/gocolly/colly/v2"
+	"github.com/josuetorr/nomad/internal/common"
 	"github.com/josuetorr/nomad/internal/db"
 	"github.com/josuetorr/nomad/internal/lexer"
 )
@@ -20,32 +19,45 @@ const (
 
 const defaultSize = 1000
 
-type DocId string
+type (
+	DocID string
+	// NOTE: If we can find some clever way to organize document pages in a way to deliver better search
+	// results, it might be a killer feature. Come back to it later
+	// PageID string
+)
 
 type TokenizedDoc struct {
-	DocID   DocId
+	DocID   DocID
 	content []string
 }
 
-type DfTable map[DocId]map[string]uint64
-
 type Doc struct {
-	DocId   DocId
+	DocId   DocID
 	Content string
 }
 
+type (
+	TermFreq    map[string]uint64
+	DocTermFreq struct {
+		DocID DocID
+		TF    TermFreq
+	}
+	DocFreq map[DocID]uint64
+	TFIndex map[string]DocFreq
+)
+
+// NOTE: seems like a way to write more efficiently. Piggybacking on the PageID idea
+// just keeping the idea here
+// type DFIndex map[DocID]TermFreq
+// type DFIndex     map[PageID]DFIndex
+
 type Node struct {
 	kv db.KVStorer
-
-	rw      *sync.Mutex
-	DfTable DfTable
 }
 
 func NewNode(kv db.KVStorer) Node {
 	return Node{
-		kv:      kv,
-		rw:      &sync.Mutex{},
-		DfTable: make(DfTable, defaultSize),
+		kv: kv,
 	}
 }
 
@@ -71,7 +83,7 @@ func (n *Node) Crawl(startURL string) chan Doc {
 			url := r.Request.URL.String()
 			content := string(r.Body)
 			doc := Doc{
-				DocId:   DocId(url),
+				DocId:   DocID(url),
 				Content: content,
 			}
 			out <- doc
@@ -103,29 +115,75 @@ func (n *Node) TokenizeDocs(docChan chan Doc) chan TokenizedDoc {
 	return out
 }
 
-func (n *Node) IndexDF(tokenizeDocChan chan TokenizedDoc) chan struct{} {
-	done := make(chan struct{})
+func (n *Node) DFIndex(tokenizeDocChan chan TokenizedDoc) chan DocTermFreq {
+	out := make(chan DocTermFreq, defaultSize)
 	go func() {
-		n.rw.Lock()
 		for tdoc := range tokenizeDocChan {
-			fmt.Printf("df indexing: %s\n", tdoc.DocID)
-			if _, ok := n.DfTable[tdoc.DocID]; !ok {
-				n.DfTable[tdoc.DocID] = make(map[string]uint64, defaultSize)
+			dtf := DocTermFreq{
+				DocID: tdoc.DocID,
+				TF:    make(TermFreq, defaultSize),
 			}
 			for _, t := range tdoc.content {
-				n.DfTable[tdoc.DocID][t]++
+				dtf.TF[t]++
+			}
+			out <- dtf
+		}
+		close(out)
+	}()
+	return out
+}
+
+func (n *Node) WriteIndexDF(dtfChan <-chan DocTermFreq) chan error {
+	done := make(chan error)
+	go func() {
+		for dtf := range dtfChan {
+			k := common.DocKey(string(dtf.DocID))
+			v := ""
+			for t, f := range dtf.TF {
+				v = fmt.Sprintf("%s%s%s%d,", v, t, common.KeySep, f)
+			}
+			fmt.Printf("indexing %s...\n", dtf.DocID)
+			if err := n.kv.Put(k, []byte(v)); err != nil {
+				done <- err
 			}
 		}
-		n.rw.Unlock()
-		close(done)
+		done <- nil
 	}()
 	return done
 }
 
-func createDirIfNotExists(dir string) {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if err := os.Mkdir(dir, os.ModePerm); err != nil {
-			log.Fatalf("Failed to create dir: %s. Error: %s\n", dir, err)
+func (n *Node) WriteIndexTF() error {
+	tf := make(TFIndex, defaultSize)
+	err := n.kv.IteratePrefix(common.DocKey(), func(key, val []byte) error {
+		k := string(key)
+		parts := common.KeyParts(k)
+		if len(parts) != 2 {
+			return fmt.Errorf("doc key must only have 2 parts: %s ()\n", k)
 		}
-	}
+		docID := DocID(parts[1])
+		println(docID)
+
+		v := string(val)
+		for tfValue := range strings.SplitSeq(v, ",") {
+			tfStr := strings.Split(tfValue, common.KeySep)
+			if len(tfStr) != 2 {
+				return fmt.Errorf("term value must only have 2 parts: %s\n", k)
+			}
+			t := tfStr[0]
+			fStr := tfStr[1]
+			_, ok := tf[t]
+			if !ok {
+				tf[t] = make(DocFreq, defaultSize)
+			}
+			f, err := strconv.Atoi(fStr)
+			if err != nil {
+				return err
+			}
+			tf[t][docID] += uint64(f)
+		}
+
+		return nil
+	})
+	fmt.Printf("%+v\n", tf)
+	return err
 }

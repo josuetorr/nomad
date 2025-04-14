@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	keySep = ":"
+	KeySep = "|"
 )
 
 func createkey(parts []string) string {
@@ -17,7 +17,7 @@ func createkey(parts []string) string {
 			builder.WriteString(p)
 			continue
 		}
-		builder.WriteString(fmt.Sprintf("%s%s", p, keySep))
+		builder.WriteString(fmt.Sprintf("%s%s", p, KeySep))
 	}
 
 	return builder.String()
@@ -43,5 +43,5 @@ func DocCountKey() string {
 }
 
 func KeyParts(k string) []string {
-	return strings.Split(k, keySep)
+	return strings.Split(k, KeySep)
 }

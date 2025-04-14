@@ -49,6 +49,27 @@ func (kv *KV) Get(k string) ([]byte, error) {
 	return v, nil
 }
 
+func (kv *KV) ReadWrite(k string, mapper func([]byte) ([]byte, error)) error {
+	kv.db.Update(func(txn *badger.Txn) error {
+		k := []byte(k)
+		item, err := txn.Get(k)
+		if err != nil {
+			return err
+		}
+		v, err := item.ValueCopy(nil)
+		if err != nil {
+			return err
+		}
+		mappedv, err := mapper(v)
+		if err != nil {
+			return err
+		}
+
+		return txn.Set(k, mappedv)
+	})
+	return nil
+}
+
 func (kv *KV) BatchWrite(fn func(w KVWriter) error) error {
 	wb := kv.db.NewWriteBatch()
 	defer wb.Cancel()
