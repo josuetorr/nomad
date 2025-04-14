@@ -10,7 +10,7 @@ import (
 
 const startURL = "https://wikipedia.org/wiki/meme"
 
-func main() {
+func main2() {
 	kv := db.NewKV("/tmp/badger/nomad")
 	n := node.NewNode(kv)
 	docs := n.Crawl(startURL)
@@ -22,12 +22,13 @@ func main() {
 	if err != nil {
 		fmt.Printf("Err: %s\n", err)
 	} else {
+		println("Starting to write index TF...")
 		n.WriteIndexTF()
 	}
 }
 
-func main2() {
+func main() {
 	kv := db.NewKV("/tmp/badger/nomad")
-	bytes, _ := kv.Get(common.DocKey(startURL))
+	bytes, _ := kv.Get(common.TermKey("Typhoid"))
 	fmt.Printf("%s\n", string(bytes))
 }

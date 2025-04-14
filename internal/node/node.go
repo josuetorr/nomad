@@ -142,7 +142,7 @@ func (n *Node) WriteIndexDF(dtfChan <-chan DocTermFreq) chan error {
 			for t, f := range dtf.TF {
 				v = fmt.Sprintf("%s%s%s%d,", v, t, common.KeySep, f)
 			}
-			fmt.Printf("indexing %s...\n", dtf.DocID)
+			fmt.Printf("DF indexing doc: %s...\n", dtf.DocID)
 			if err := n.kv.Put(k, []byte(v)); err != nil {
 				done <- err
 			}
@@ -158,19 +158,19 @@ func (n *Node) WriteIndexTF() error {
 		k := string(key)
 		parts := common.KeyParts(k)
 		if len(parts) != 2 {
-			return fmt.Errorf("doc key must only have 2 parts: %s ()\n", k)
+			return fmt.Errorf("doc key must only have 2 parts: %s\n", k)
 		}
 		docID := DocID(parts[1])
-		println(docID)
-
-		v := string(val)
-		for tfValue := range strings.SplitSeq(v, ",") {
-			tfStr := strings.Split(tfValue, common.KeySep)
-			if len(tfStr) != 2 {
-				return fmt.Errorf("term value must only have 2 parts: %s\n", k)
+		dfIndexRow := string(val)
+		for tfValue := range strings.SplitSeq(dfIndexRow, ",") {
+			tfParts := strings.Split(tfValue, common.KeySep)
+			if len(tfParts) != 2 {
+				// NOTE: for now ignore values that have invalid formats
+				// will try to fix using protobuf for serializing
+				return nil
 			}
-			t := tfStr[0]
-			fStr := tfStr[1]
+			t := tfParts[0]
+			fStr := tfParts[1]
 			_, ok := tf[t]
 			if !ok {
 				tf[t] = make(DocFreq, defaultSize)
@@ -184,6 +184,18 @@ func (n *Node) WriteIndexTF() error {
 
 		return nil
 	})
-	fmt.Printf("%+v\n", tf)
+	n.kv.BatchWrite(func(w db.KVWriter) error {
+		for t, df := range tf {
+			v := ""
+			for docID, dc := range df {
+				v = fmt.Sprintf("%s%s%s%d,", v, docID, common.KeySep, dc)
+			}
+			fmt.Printf("TF Indexing term: %s...\n", t)
+			if err := w.Set([]byte(common.TermKey(t)), []byte(v)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	return err
 }
