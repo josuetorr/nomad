@@ -1,7 +1,6 @@
 package node
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -159,23 +158,24 @@ func (n *Node) WriteIndexDF(dtfChan <-chan DocTermFreq) {
 	n.kv.Update(func(txn *badger.Txn) error {
 		k := []byte(common.DocCountKey())
 		item, err := txn.Get(k)
-		if errors.Is(err, badger.ErrKeyNotFound) {
-			v := common.Uint64ToBytes(0)
+		switch err {
+		case badger.ErrKeyNotFound:
+			v := common.Uint64ToBytes(docCount.Load())
 			txn.Set(k, v)
-		}
-		if err != nil {
+		case nil:
+			bytes, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			savedv, err := common.BytesToUint64(bytes)
+			if err != nil {
+				return err
+			}
+			dc := docCount.Load()
+			txn.Set(k, common.Uint64ToBytes(dc+savedv))
+		default:
 			return err
 		}
-		bytes, err := item.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-		savedv, err := common.BytesToUint64(bytes)
-		if err != nil {
-			return err
-		}
-		dc := docCount.Load()
-		txn.Set(k, common.Uint64ToBytes(dc+savedv))
 		return nil
 	})
 }
@@ -215,7 +215,7 @@ func (n *Node) WriteIndexTF() error {
 	n.kv.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
-		p := []byte(common.DocCountKey())
+		p := []byte(common.DocKey(":"))
 		for it.Seek(p); it.ValidForPrefix(p); it.Next() {
 			item := it.Item()
 			key := item.Key()

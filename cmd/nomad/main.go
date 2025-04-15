@@ -23,7 +23,7 @@ func initKV(path string) *badger.DB {
 	return kv
 }
 
-func main() {
+func main2() {
 	kv := initKV(nomadKvPath)
 	n := node.NewNode(kv)
 	docs := n.Crawl(startURL)
@@ -38,7 +38,7 @@ func main() {
 	// n.Search(q)
 }
 
-func main2() {
+func main() {
 	kv := initKV(nomadKvPath)
 	kv.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(common.DocCountKey()))
