@@ -1,13 +1,15 @@
 package node
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/gocolly/colly/v2"
 	"github.com/josuetorr/nomad/internal/common"
-	"github.com/josuetorr/nomad/internal/db"
 	"github.com/josuetorr/nomad/internal/lexer"
 )
 
@@ -52,10 +54,10 @@ type (
 // type DFIndex     map[PageID]DFIndex
 
 type Node struct {
-	kv db.KVStorer
+	kv *badger.DB
 }
 
-func NewNode(kv db.KVStorer) Node {
+func NewNode(kv *badger.DB) Node {
 	return Node{
 		kv: kv,
 	}
@@ -133,8 +135,9 @@ func (n *Node) DFIndex(tokenizeDocChan chan TokenizedDoc) chan DocTermFreq {
 	return out
 }
 
-func (n *Node) WriteIndexDF(dtfChan <-chan DocTermFreq) chan error {
-	done := make(chan error)
+func (n *Node) WriteIndexDF(dtfChan <-chan DocTermFreq) {
+	doneWritingDocs := make(chan struct{})
+	var docCount atomic.Uint64
 	go func() {
 		for dtf := range dtfChan {
 			k := common.DocKey(string(dtf.DocID))
@@ -143,18 +146,43 @@ func (n *Node) WriteIndexDF(dtfChan <-chan DocTermFreq) chan error {
 				v = fmt.Sprintf("%s%s%s%d,", v, t, common.KeySep, f)
 			}
 			fmt.Printf("DF indexing doc: %s...\n", dtf.DocID)
-			if err := n.kv.Put(k, []byte(v)); err != nil {
-				done <- err
+			if err := n.kv.Update(func(txn *badger.Txn) error {
+				return txn.Set([]byte(k), []byte(v))
+			}); err == nil {
+				docCount.Add(1)
 			}
 		}
-		done <- nil
+		doneWritingDocs <- struct{}{}
 	}()
-	return done
+	<-doneWritingDocs
+	println("attempting to update doc count")
+	n.kv.Update(func(txn *badger.Txn) error {
+		k := []byte(common.DocCountKey())
+		item, err := txn.Get(k)
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			v := common.Uint64ToBytes(0)
+			txn.Set(k, v)
+		}
+		if err != nil {
+			return err
+		}
+		bytes, err := item.ValueCopy(nil)
+		if err != nil {
+			return err
+		}
+		savedv, err := common.BytesToUint64(bytes)
+		if err != nil {
+			return err
+		}
+		dc := docCount.Load()
+		txn.Set(k, common.Uint64ToBytes(dc+savedv))
+		return nil
+	})
 }
 
 func (n *Node) WriteIndexTF() error {
 	tf := make(TFIndex, defaultSize)
-	err := n.kv.IteratePrefix(common.DocKey(), func(key, val []byte) error {
+	addDocDFEntry := func(key, val []byte) error {
 		k := string(key)
 		parts := common.KeyParts(k)
 		if len(parts) != 2 {
@@ -183,19 +211,44 @@ func (n *Node) WriteIndexTF() error {
 		}
 
 		return nil
-	})
-	n.kv.BatchWrite(func(w db.KVWriter) error {
-		for t, df := range tf {
-			v := ""
-			for docID, dc := range df {
-				v = fmt.Sprintf("%s%s%s%d,", v, docID, common.KeySep, dc)
-			}
-			fmt.Printf("TF Indexing term: %s...\n", t)
-			if err := w.Set([]byte(common.TermKey(t)), []byte(v)); err != nil {
-				return err
+	}
+	n.kv.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+		p := []byte(common.DocCountKey())
+		for it.Seek(p); it.ValidForPrefix(p); it.Next() {
+			item := it.Item()
+			key := item.Key()
+			err := item.Value(func(val []byte) error {
+				return addDocDFEntry(key, val)
+			})
+			if err != nil {
+				fmt.Printf("Failed to get value for: %s. err: %s\n", string(key), err)
 			}
 		}
 		return nil
 	})
-	return err
+	wb := n.kv.NewWriteBatch()
+	defer wb.Cancel()
+	for t, df := range tf {
+		v := ""
+		for docID, dc := range df {
+			v = fmt.Sprintf("%s%s%s%d,", v, docID, common.KeySep, dc)
+		}
+		fmt.Printf("TF Indexing term: %s...\n", t)
+		if err := wb.Set([]byte(common.TermKey(t)), []byte(v)); err != nil {
+			return err
+		}
+	}
+	return wb.Flush()
+}
+
+// We lookup the td-idf table for the tokens in q
+func (n *Node) Search(q string) error {
+	// l := lexer.NewLexer(q)
+	// for _, t := range l.Tokens() {
+	// 	t := string(t)
+	// }
+	// return nil
+	panic("todo search")
 }
