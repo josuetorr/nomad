@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	KeySep = "|"
+	KeySep = ":"
 )
 
 func createkey(parts []string) string {
