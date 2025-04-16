@@ -21,7 +21,7 @@ const (
 const defaultSize = 1000
 
 type (
-	DocID string
+	DocID = string
 	// NOTE: If we can find some clever way to organize document pages in a way to deliver better search
 	// results, it might be a killer feature. Come back to it later
 	// PageID string
@@ -47,6 +47,8 @@ type (
 	TFIndex map[string]DocFreq
 )
 
+type Query string
+
 // NOTE: seems like a way to write more efficiently. Piggybacking on the PageID idea
 // just keeping the idea here
 // type DFIndex map[DocID]TermFreq
@@ -62,6 +64,7 @@ func NewNode(kv *badger.DB) Node {
 	}
 }
 
+// TODO: Respect robots.txt
 func (n *Node) Crawl(startURL string) chan Doc {
 	out := make(chan Doc, defaultSize)
 	go func() {
@@ -83,8 +86,12 @@ func (n *Node) Crawl(startURL string) chan Doc {
 			}
 			url := r.Request.URL.String()
 			content := string(r.Body)
+			docID, err := common.HashCID(r.Body)
+			if err != nil {
+				fmt.Printf("Failed to create cid for: %s. Error: %s\n", url, err)
+			}
 			doc := Doc{
-				DocId:   DocID(url),
+				DocId:   DocID(docID.String()),
 				Content: content,
 			}
 			out <- doc
@@ -144,7 +151,7 @@ func (n *Node) WriteIndexDF(dtfChan <-chan DocTermFreq) {
 			for t, f := range dtf.TF {
 				v = fmt.Sprintf("%s%s%s%d,", v, t, common.KeySep, f)
 			}
-			fmt.Printf("DF indexing doc: %s...\n", dtf.DocID)
+			fmt.Printf("DF indexing doc: %s\n", dtf.DocID)
 			if err := n.kv.Update(func(txn *badger.Txn) error {
 				return txn.Set([]byte(k), []byte(v))
 			}); err == nil {
@@ -178,6 +185,7 @@ func (n *Node) WriteIndexDF(dtfChan <-chan DocTermFreq) {
 		}
 		return nil
 	})
+	println("index DF done...")
 }
 
 func (n *Node) WriteIndexTF() error {
@@ -215,14 +223,16 @@ func (n *Node) WriteIndexTF() error {
 	n.kv.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
-		p := []byte(common.DocKey(":"))
+		p := []byte(common.DocKey())
+		fmt.Printf("prefix: %s\n", string(p))
 		for it.Seek(p); it.ValidForPrefix(p); it.Next() {
 			item := it.Item()
 			key := item.Key()
-			err := item.Value(func(val []byte) error {
-				return addDocDFEntry(key, val)
-			})
+			v, err := item.ValueCopy(nil)
 			if err != nil {
+				return err
+			}
+			if err := addDocDFEntry(key, v); err != nil {
 				fmt.Printf("Failed to get value for: %s. err: %s\n", string(key), err)
 			}
 		}
@@ -244,7 +254,7 @@ func (n *Node) WriteIndexTF() error {
 }
 
 // We lookup the td-idf table for the tokens in q
-func (n *Node) Search(q string) error {
+func (n *Node) Search(q Query) error {
 	// l := lexer.NewLexer(q)
 	// for _, t := range l.Tokens() {
 	// 	t := string(t)
