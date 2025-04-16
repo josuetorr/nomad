@@ -224,7 +224,6 @@ func (n *Node) WriteIndexTF() error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
 		p := []byte(common.DocKey())
-		fmt.Printf("prefix: %s\n", string(p))
 		for it.Seek(p); it.ValidForPrefix(p); it.Next() {
 			item := it.Item()
 			key := item.Key()
