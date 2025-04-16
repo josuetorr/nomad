@@ -47,7 +47,7 @@ type (
 	TFIndex map[string]DocFreq
 )
 
-type Query string
+type Query = string
 
 // NOTE: seems like a way to write more efficiently. Piggybacking on the PageID idea
 // just keeping the idea here
@@ -254,10 +254,9 @@ func (n *Node) WriteIndexTF() error {
 
 // We lookup the td-idf table for the tokens in q
 func (n *Node) Search(q Query) error {
-	// l := lexer.NewLexer(q)
-	// for _, t := range l.Tokens() {
-	// 	t := string(t)
-	// }
-	// return nil
+	l := lexer.NewLexer(q)
+	for _, t := range l.Tokens() {
+		t := string(t)
+	}
 	panic("todo search")
 }
