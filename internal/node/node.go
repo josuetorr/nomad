@@ -1,14 +1,14 @@
 package node
 
 import (
-	"fmt"
-	"strconv"
+	"log/slog"
+	"slices"
 	"strings"
-	"sync/atomic"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/gocolly/colly/v2"
 	"github.com/josuetorr/nomad/internal/common"
+	"github.com/josuetorr/nomad/internal/index"
 	"github.com/josuetorr/nomad/internal/lexer"
 )
 
@@ -22,6 +22,7 @@ const defaultSize = 1000
 
 type (
 	DocID = string
+	Url   = string
 	// NOTE: If we can find some clever way to organize document pages in a way to deliver better search
 	// results, it might be a killer feature. Come back to it later
 	// PageID string
@@ -29,44 +30,36 @@ type (
 
 type TokenizedDoc struct {
 	DocID   DocID
+	Url     Url
 	content []string
 }
 
-type Doc struct {
-	DocId   DocID
+type RawDoc struct {
+	Url     Url
 	Content string
 }
 
-type (
-	TermFreq    map[string]uint64
-	DocTermFreq struct {
-		DocID DocID
-		TF    TermFreq
-	}
-	DocFreq map[DocID]uint64
-	TFIndex map[string]DocFreq
-)
+type QueryResponse struct {
+	Data []Url
+}
 
 type Query = string
 
-// NOTE: seems like a way to write more efficiently. Piggybacking on the PageID idea
-// just keeping the idea here
-// type DFIndex map[DocID]TermFreq
-// type DFIndex     map[PageID]DFIndex
-
 type Node struct {
 	kv *badger.DB
+	i  index.Index
 }
 
 func NewNode(kv *badger.DB) Node {
 	return Node{
 		kv: kv,
+		i:  index.Init(),
 	}
 }
 
 // TODO: Respect robots.txt
-func (n *Node) Crawl(startURL string) chan Doc {
-	out := make(chan Doc, defaultSize)
+func (n *Node) Crawl(startURL string) chan RawDoc {
+	out := make(chan RawDoc, defaultSize)
 	go func() {
 		defer close(out)
 		c := colly.NewCollector(
@@ -86,12 +79,8 @@ func (n *Node) Crawl(startURL string) chan Doc {
 			}
 			url := r.Request.URL.String()
 			content := string(r.Body)
-			docID, err := common.HashCID(r.Body)
-			if err != nil {
-				fmt.Printf("Failed to create cid for: %s. Error: %s\n", url, err)
-			}
-			doc := Doc{
-				DocId:   DocID(docID.String()),
+			doc := RawDoc{
+				Url:     url,
 				Content: content,
 			}
 			out <- doc
@@ -102,19 +91,24 @@ func (n *Node) Crawl(startURL string) chan Doc {
 	return out
 }
 
-func (n *Node) SaveDocs() {
-	// NOTE: this will be skipped for now. No need for this complexity whilst prototyping
-}
+// NOTE: this will be skipped for now. No need for this complexity whilst prototyping
+func (n *Node) SaveDocs() {}
 
-func (n *Node) TokenizeDocs(docChan chan Doc) chan TokenizedDoc {
+func (n *Node) TokenizeDocs(docChan chan RawDoc) chan TokenizedDoc {
 	out := make(chan TokenizedDoc, defaultSize)
 	go func() {
 		for d := range docChan {
-			tdoc := TokenizedDoc{}
+			cid, err := common.HashCID([]byte(d.Content))
+			if err != nil {
+				slog.Error("Failed to create cid for: %s. Err: %s\n", string(d.Url), err)
+				continue
+			}
 			l := lexer.NewLexer(d.Content)
-			for _, t := range l.Tokens() {
-				tdoc.DocID = d.DocId
-				tdoc.content = append(tdoc.content, string(t))
+			docID := cid.String()
+			tdoc := TokenizedDoc{
+				DocID:   docID,
+				Url:     d.Url,
+				content: l.Accumulate(),
 			}
 			out <- tdoc
 		}
@@ -123,140 +117,51 @@ func (n *Node) TokenizeDocs(docChan chan Doc) chan TokenizedDoc {
 	return out
 }
 
-func (n *Node) DFIndex(tokenizeDocChan chan TokenizedDoc) chan DocTermFreq {
-	out := make(chan DocTermFreq, defaultSize)
+func (n *Node) AddDocs(tokenizeDocChan chan TokenizedDoc) chan struct{} {
+	done := make(chan struct{}, 1)
 	go func() {
-		for tdoc := range tokenizeDocChan {
-			dtf := DocTermFreq{
-				DocID: tdoc.DocID,
-				TF:    make(TermFreq, defaultSize),
-			}
-			for _, t := range tdoc.content {
-				dtf.TF[t]++
-			}
-			out <- dtf
+		for tknDoc := range tokenizeDocChan {
+			doc := index.CreateDoc(tknDoc.Url, tknDoc.content)
+			n.i.AddDoc(tknDoc.DocID, doc)
 		}
-		close(out)
+		done <- struct{}{}
 	}()
-	return out
-}
-
-func (n *Node) WriteIndexDF(dtfChan <-chan DocTermFreq) {
-	doneWritingDocs := make(chan struct{})
-	var docCount atomic.Uint64
-	go func() {
-		for dtf := range dtfChan {
-			k := common.DocKey(string(dtf.DocID))
-			v := ""
-			for t, f := range dtf.TF {
-				v = fmt.Sprintf("%s%s%s%d,", v, t, common.KeySep, f)
-			}
-			fmt.Printf("DF indexing doc: %s\n", dtf.DocID)
-			if err := n.kv.Update(func(txn *badger.Txn) error {
-				return txn.Set([]byte(k), []byte(v))
-			}); err == nil {
-				docCount.Add(1)
-			}
-		}
-		doneWritingDocs <- struct{}{}
-	}()
-	<-doneWritingDocs
-	println("attempting to update doc count")
-	n.kv.Update(func(txn *badger.Txn) error {
-		k := []byte(common.DocCountKey())
-		item, err := txn.Get(k)
-		switch err {
-		case badger.ErrKeyNotFound:
-			v := common.Uint64ToBytes(docCount.Load())
-			txn.Set(k, v)
-		case nil:
-			bytes, err := item.ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-			savedv, err := common.BytesToUint64(bytes)
-			if err != nil {
-				return err
-			}
-			dc := docCount.Load()
-			txn.Set(k, common.Uint64ToBytes(dc+savedv))
-		default:
-			return err
-		}
-		return nil
-	})
-	println("index DF done...")
-}
-
-func (n *Node) WriteIndexTF() error {
-	tf := make(TFIndex, defaultSize)
-	addDocDFEntry := func(key, val []byte) error {
-		k := string(key)
-		parts := common.KeyParts(k)
-		if len(parts) != 2 {
-			return fmt.Errorf("doc key must only have 2 parts: %s\n", k)
-		}
-		docID := DocID(parts[1])
-		dfIndexRow := string(val)
-		for tfValue := range strings.SplitSeq(dfIndexRow, ",") {
-			tfParts := strings.Split(tfValue, common.KeySep)
-			if len(tfParts) != 2 {
-				// NOTE: for now ignore values that have invalid formats
-				// will try to fix using protobuf for serializing
-				return nil
-			}
-			t := tfParts[0]
-			fStr := tfParts[1]
-			_, ok := tf[t]
-			if !ok {
-				tf[t] = make(DocFreq, defaultSize)
-			}
-			f, err := strconv.Atoi(fStr)
-			if err != nil {
-				return err
-			}
-			tf[t][docID] += uint64(f)
-		}
-
-		return nil
-	}
-	n.kv.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer it.Close()
-		p := []byte(common.DocKey())
-		for it.Seek(p); it.ValidForPrefix(p); it.Next() {
-			item := it.Item()
-			key := item.Key()
-			v, err := item.ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-			if err := addDocDFEntry(key, v); err != nil {
-				fmt.Printf("Failed to get value for: %s. err: %s\n", string(key), err)
-			}
-		}
-		return nil
-	})
-	wb := n.kv.NewWriteBatch()
-	defer wb.Cancel()
-	for t, df := range tf {
-		v := ""
-		for docID, dc := range df {
-			v = fmt.Sprintf("%s%s%s%d,", v, docID, common.KeySep, dc)
-		}
-		fmt.Printf("TF Indexing term: %s...\n", t)
-		if err := wb.Set([]byte(common.TermKey(t)), []byte(v)); err != nil {
-			return err
-		}
-	}
-	return wb.Flush()
+	return done
 }
 
 // We lookup the td-idf table for the tokens in q
-func (n *Node) Search(q Query) error {
+func (n *Node) Search(q Query) (*QueryResponse, error) {
 	l := lexer.NewLexer(q)
+	type doc struct {
+		url string
+		val float64
+	}
+	tfidfMap := make(map[string][]doc)
 	for _, t := range l.Tokens() {
 		t := string(t)
+		docIDs := n.i.Terms[t]
+		for _, dID := range docIDs {
+			tf := n.i.TF(t, dID)
+			idf := n.i.IDF(t)
+
+			val := tf * idf
+			doc := doc{
+				url: n.i.Corpus[dID].Url,
+				val: val,
+			}
+			tfidfMap[t] = append(tfidfMap[t], doc)
+		}
+		slices.SortFunc(tfidfMap[t], func(a, b doc) int {
+			return int(a.val) - int(b.val)
+		})
 	}
-	panic("todo search")
+	qres := QueryResponse{
+		Data: []Url{},
+	}
+	for _, urls := range tfidfMap {
+		for _, doc := range urls {
+			qres.Data = append(qres.Data, doc.url)
+		}
+	}
+	return &qres, nil
 }

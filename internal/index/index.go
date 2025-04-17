@@ -1,6 +1,9 @@
 package index
 
-import "math"
+import (
+	"math"
+	"sync"
+)
 
 type (
 	DocID = string
@@ -11,8 +14,11 @@ type (
 		TF  map[Term]uint64
 	}
 	Index struct {
-		corpus map[DocID]*Doc
-		terms  map[Term][]DocID
+		corpusLock *sync.RWMutex
+		Corpus     map[DocID]*Doc
+
+		termsLock *sync.RWMutex
+		Terms     map[Term][]DocID
 	}
 )
 
@@ -20,29 +26,47 @@ const defaultSize = 1000
 
 func Init() Index {
 	return Index{
-		corpus: make(map[DocID]*Doc, defaultSize),
-		terms:  make(map[Term][]DocID, defaultSize),
+		corpusLock: &sync.RWMutex{},
+		Corpus:     make(map[DocID]*Doc, defaultSize),
+
+		termsLock: &sync.RWMutex{},
+		Terms:     make(map[Term][]DocID, defaultSize),
 	}
 }
 
 func (i *Index) AddDoc(dID DocID, d *Doc) {
-	i.corpus[dID] = d
+	i.corpusLock.Lock()
+	i.Corpus[dID] = d
+	i.corpusLock.Unlock()
+
+	i.termsLock.Lock()
 	for t := range d.TF {
-		if _, ok := i.terms[t]; !ok {
-			i.terms[t] = make([]DocID, defaultSize)
+		if _, ok := i.Terms[t]; !ok {
+			i.Terms[t] = []DocID{}
 		}
-		i.terms[t] = append(i.terms[t], dID)
+		i.Terms[t] = append(i.Terms[t], dID)
 	}
+	i.termsLock.Unlock()
 }
 
 func (i *Index) TF(t Term, dID DocID) float64 {
-	doc := i.corpus[dID]
-	termCount := len(doc.TF)
-	return math.Log(float64(1 + (doc.TF[t] / uint64(termCount))))
+	defer i.corpusLock.RUnlock()
+	i.corpusLock.RLock()
+	doc := i.Corpus[dID]
+	if doc == nil {
+		return 0
+	}
+	return math.Log(float64(1 + doc.TF[t]))
 }
 
 func (i *Index) IDF(t Term) float64 {
-	corpusSize := len(i.corpus)
-	docs := i.terms[t]
-	return math.Log(float64(corpusSize / len(docs)))
+	defer i.termsLock.RUnlock()
+	i.termsLock.RLock()
+	corpusSize := len(i.Corpus)
+	docs := i.Terms[t]
+	return math.Log((float64(corpusSize+1) / float64(len(docs)+1)))
+}
+
+func (i *Index) CorpusSize() int {
+	return len(i.Corpus)
 }

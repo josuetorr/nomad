@@ -11,6 +11,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/josuetorr/nomad/internal/common"
 	"github.com/josuetorr/nomad/internal/node"
+	"github.com/josuetorr/nomad/pkg/monad"
 )
 
 const (
@@ -30,53 +31,39 @@ func main() {
 	// for now this needs to run before we can perform a query.
 	kv := initKV(nomadKvPath)
 	n := node.NewNode(kv)
+	println("Starting crawling")
 	docs := n.Crawl(startURL)
-	tokens := n.TokenizeDocs(docs)
-	doctfs := n.DFIndex(tokens)
-	n.WriteIndexDF(doctfs)
-	println("Starting to write index TF...")
-	if err := n.WriteIndexTF(); err != nil {
-		fmt.Printf("Failed to write index TF")
-		return
-	}
+	println("Starting tokenizint")
+	tokenizedDocs := n.TokenizeDocs(docs)
+	println("Starting filling corpus")
+	done := n.AddDocs(tokenizedDocs)
+	<-done
 	println("Finished writing index TF...")
 
-	qs := make(chan node.Query)
-	errs := make(chan error)
-	cleanup := func() {
-		defer close(qs)
-		defer close(errs)
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	println("Preparing for search query...")
-	for {
-		select {
-		case q := <-qs:
-			go func(q node.Query, errs chan<- error) {
-				if err := n.Search(q); err != nil {
-					errs <- err
-				}
-			}(q, errs)
-		case err := <-errs:
-			defer cleanup()
-			fmt.Printf("Err: %s\n", err)
-			fmt.Printf("Closing query channel...\n")
+	go func() {
+		var q node.Query
+		print("Enter your query: ")
+		_, err := fmt.Scanln(&q)
+		if err != nil {
+			fmt.Printf("Failed to read query. Error: %s\n", err)
 			return
-		case <-ctx.Done():
-			defer cleanup()
-			fmt.Printf("Got signal interrupt")
-			return
-		default:
-			var q string
-			fmt.Print("Enter your query: ")
-			fmt.Scanf("%s", &q)
-			go func(q node.Query) {
-				qs <- q
-			}(node.Query(q))
-
 		}
-	}
+		res, err := n.Search(q)
+		if err != nil {
+			fmt.Printf("Failed to perform search: %s. Error: %s\n", string(q), err)
+			return
+		}
+		println("Results: ")
+		for _, url := range monad.Chopn(res.Data, 10) {
+			fmt.Printf("	%s\n", url)
+		}
+	}()
+
+	<-ctx.Done()
+	println("Shutting down. Bye!")
 }
 
 // using for prototyping
