@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"os/signal"
 	"syscall"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/josuetorr/nomad/internal/common"
 	"github.com/josuetorr/nomad/internal/node"
 	"github.com/josuetorr/nomad/pkg/monad"
 )
