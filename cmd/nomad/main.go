@@ -43,20 +43,22 @@ func main() {
 	println("Preparing for search query...")
 	go func() {
 		var q node.Query
-		print("Enter your query: ")
-		_, err := fmt.Scanln(&q)
-		if err != nil {
-			fmt.Printf("Failed to read query. Error: %s\n", err)
-			return
-		}
-		res, err := n.Search(q)
-		if err != nil {
-			fmt.Printf("Failed to perform search: %s. Error: %s\n", string(q), err)
-			return
-		}
-		println("Results: ")
-		for _, url := range monad.Chopn(res.Data, 10) {
-			fmt.Printf("	%s\n", url)
+		for {
+			print("Enter your query: ")
+			_, err := fmt.Scanln(&q)
+			if err != nil {
+				fmt.Printf("Failed to read query. Error: %s\n", err)
+				return
+			}
+			res, err := n.Search(q)
+			if err != nil {
+				fmt.Printf("Failed to perform search: %s. Error: %s\n", string(q), err)
+				return
+			}
+			println("Results: ")
+			for _, url := range monad.Chopn(res.Data, 10) {
+				fmt.Printf("	%s\n", url)
+			}
 		}
 	}()
 
