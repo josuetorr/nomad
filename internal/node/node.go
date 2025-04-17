@@ -152,7 +152,7 @@ func (n *Node) Search(q Query) (*QueryResponse, error) {
 			tfidfMap[t] = append(tfidfMap[t], doc)
 		}
 		slices.SortFunc(tfidfMap[t], func(a, b doc) int {
-			return int(a.val) - int(b.val)
+			return int(b.val) - int(a.val)
 		})
 	}
 	qres := QueryResponse{
