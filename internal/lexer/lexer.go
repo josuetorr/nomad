@@ -59,6 +59,14 @@ func (l *Lexer) nextToken() *Token {
 	return &token
 }
 
+func (l *Lexer) Accumulate() []string {
+	tokens := []string{}
+	for _, t := range l.Tokens() {
+		tokens = append(tokens, string(t))
+	}
+	return tokens
+}
+
 func (l *Lexer) Tokens() iter.Seq2[int, Token] {
 	return func(yield func(int, Token) bool) {
 		t := l.nextToken()
