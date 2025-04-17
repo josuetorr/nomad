@@ -65,24 +65,3 @@ func main() {
 	<-ctx.Done()
 	println("Shutting down. Bye!")
 }
-
-// using for prototyping
-func main2() {
-	kv := initKV(nomadKvPath)
-	kv.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(common.DocCountKey()))
-		if errors.Is(err, badger.ErrKeyNotFound) {
-			fmt.Printf("Could not find doc count entry")
-		}
-		bytes, err := item.ValueCopy(nil)
-		if err != nil {
-			log.Fatalf("Failed to copy doc count value")
-		}
-		dc, err := common.BytesToUint64(bytes)
-		if err != nil {
-			log.Fatalf("Failed to convert bytes into uint64")
-		}
-		fmt.Printf("doc_count: %d\n", dc)
-		return nil
-	})
-}
