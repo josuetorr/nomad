@@ -31,7 +31,7 @@ func main() {
 	n := node.NewNode(kv)
 	println("Starting crawling")
 	docs := n.Crawl(startURL)
-	println("Starting tokenizint")
+	println("Starting tokenizing")
 	tokenizedDocs := n.TokenizeDocs(docs)
 	println("Starting filling corpus")
 	done := n.AddDocs(tokenizedDocs)
